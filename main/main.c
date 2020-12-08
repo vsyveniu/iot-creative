@@ -1,58 +1,106 @@
-/** @file main.c *
- * entry point
- */
 
 #include "main.h"
-#include <stdio.h>
+#include "esp_wifi.h"
+#include "uart_console.h"
+#include "freertos/event_groups.h"
+#include "esp_event.h"
+#include "esp_wifi_types.h"
+#include "esp_eth.h"
+#include "esp_log.h"
+#include "lwip/err.h"
+#include "lwip/sys.h"
+#include "esp_netif.h"
+#include "lwip/apps/sntp.h"
+#include "wifi_connection.h"
+#include "esp_err.h"
+#include "custom_http_server.h"
 
-xQueueHandle hc_sr501_queue;
-
-
-static void IRAM_ATTR hc_sr501_intr(void *args){
-
-	uint32_t pin = (uint32_t) args;
-	xQueueSendFromISR(hc_sr501_queue, &pin, NULL);
-}
-
-void hc_sr501_fired()
-{
-	uint32_t pin;
-
-	while (true)
-	{
-		if(xQueueReceive(hc_sr501_queue, &pin, portMAX_DELAY))
-		{
-            printf("interrupt:  %d\n", gpio_get_level(HC_SR501));
-		}
-        //vTaskDelay(10 / portTICK_PERIOD_MS);
-	}
-}
-
+static uint8_t master_mac[ESP_NOW_ETH_ALEN] = { 0x3c, 0x71, 0xbf, 0xf1, 0x2e, 0xf0 };
 
 void app_main()
 {
-   gpio_config_t hc_sr501_conf = {
-		.pin_bit_mask = GPIO_SEL_18,
-		.mode = GPIO_MODE_INPUT,
-		/* .pull_up_en = GPIO_PULLUP_DISABLE,
-		.pull_down_en = GPIO_PULLDOWN_DISABLE, */
-		.intr_type = GPIO_INTR_POSEDGE,
-	};
+    esp_err_t err;
 
-    gpio_config(&hc_sr501_conf);
+    nvs_flash_init();
 
-	gpio_install_isr_service(0);
+    uart_console_init();
+    register_cmnd_set();
 
-	gpio_isr_handler_add(HC_SR501, hc_sr501_intr, (void *)HC_SR501);
+    gpio_config_t butt_1_conf = {
+        .pin_bit_mask = GPIO_SEL_39,
+        .mode = GPIO_MODE_INPUT,
+        .intr_type = GPIO_INTR_POSEDGE,
+    };
 
-	hc_sr501_queue = xQueueCreate(10, sizeof(int));
+    gpio_config(&butt_1_conf);
 
-	xTaskCreate(hc_sr501_fired, "button 1 task", 2048, NULL, 1, NULL);
+    scan_mutex = xSemaphoreCreateMutex();
 
-    while(true)
+    err = wifi_init();
+    if (err != ESP_OK)
     {
-        printf("regular:    %d\n", gpio_get_level(HC_SR501));
-        //vTaskDelay(10 / portTICK_PERIOD_MS);
+        printf("%s\n", "WIFI initialization failed");
     }
 
+    wifi_register_events();
+
+    esp_now_install();
+
+    wifi_sta_info_s wifi_sta_info = {
+        .wifi_reconnect_count = 0,
+        .state = "DISCONNECTED",
+        .ssid = "",
+        .fallback_ssid = "",
+        .fallback_passwd = "",
+        .channel = 0,
+        .rssi = 0,
+        .ip = NULL,
+        .is_connected = false,
+    };
+
+    memset(wifi_sta_info.fallback_ssid, 0, 32);
+    memset(wifi_sta_info.fallback_passwd, 0, 63); 
+    memset(wifi_sta_info.passwd, 0, 63); 
+    memset(wifi_sta_info.ssid_str, 0, 32); 
+    wifi_get_nvs_data(&wifi_sta_info);
+
+    wifi_info_queue = xQueueCreate(1, sizeof(wifi_sta_info_s));
+
+    UBaseType_t is_filled = 0;
+    is_filled = uxQueueMessagesWaiting(wifi_info_queue);
+
+    if (!is_filled)
+    {
+        xQueueSend(wifi_info_queue, &wifi_sta_info, 10);
+    }
+    wifi_scan_queue = xQueueCreate( 1, sizeof(char) * 1024);
+
+    if(!esp_now_is_master_on(master_mac))
+    {
+        if(strlen(wifi_sta_info.ssid_str) > 0)
+        {
+            wifi_connect(wifi_sta_info.ssid_str, wifi_sta_info.passwd);
+        }
+        else
+        {
+            wifi_scan_aps();
+            esp_netif_create_default_wifi_ap();
+            esp_wifi_set_mode(WIFI_MODE_APSTA);
+            custom_http_server_init();
+        }
+    }
+
+    gpio_install_isr_service(0);
+
+    //hc_sr501_init();
+
+    //control_buttons_init();
+
+    ///DHT task to queue
+    /// motion task to queue
+    ///mq7 task to queue
+
+    ///send all data
+
+  
 }

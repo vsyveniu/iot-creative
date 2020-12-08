@@ -1,4 +1,4 @@
 idf_component_register(
                        INCLUDE_DIRS "."
-                       REQUIRES nvs_flash
+                       REQUIRES nvs_flash esp_http_server
                       )

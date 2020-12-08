@@ -112,16 +112,17 @@ function connect()
                 if(this.responseText == 'OK')
                 {
                     status.classList.add("is-v-on", "is-success");
-                    status.innerHTML = "Try to connect to selected AP. If you connected to device via STA mode this page will be no longer operational. Reloading...";
-                    setTimeout(() => status.classList.remove("is-v-on", "is-success"), 2000);
-                    location.reload();  
+                    status.innerHTML = "Try to connect to selected AP. This page will no longer be operational";
+                    setTimeout(() => status.classList.remove("is-v-on", "is-success"), 4000);
+                    setTimeout(() => location.reload(), 4000);
+                    
                 }
                 else
                 {
                     status.classList.add("is-v-on", "is-danger");
                     status.innerHTML = "You was disconnected. Perhaps you performed wifi connection into different network. At last something terrible could happend :(";
-                    setTimeout(() => status.classList.remove("is-v-on", "is-danger"), 4000); 
-                    location.reload();  
+                    setTimeout(() => status.classList.remove("is-v-on", "is-danger"), 4000);
+                    setTimeout(() => location.reload(), 4000);
                 }   
             }
         }
